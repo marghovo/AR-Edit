@@ -5,3 +5,6 @@ outputs/
 *.mp4
 *.pt
 !configs/*
+
+# project page videos
+!docs/static/videos/**/*.mp4
