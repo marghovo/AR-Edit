@@ -1,0 +1,18 @@
+# Backbone settings of Reward-Forcing T2V-1.3B used by AR-Edit.
+# Values are copied from Reward-Forcing's configs/reward_forcing.yaml and
+# configs/default_config.yaml; only the keys read at inference time are kept.
+
+# Directory that contains Wan2.1-T2V-1.3B/ (UMT5 encoder, VAE, DiT config).
+# Overridden by --wan_checkpoint_dir.
+checkpoint_path: checkpoints
+
+model_kwargs:
+  timestep_shift: 5.0
+  local_attn_size: 9      # KV cache window (latent frames)
+  sink_size: 3            # attention-sink latent frames kept forever
+
+denoising_step_list: [1000, 750, 500, 250]
+warp_denoising_step: true
+num_frame_per_block: 3    # latent frames per chunk (= 12 pixel frames)
+independent_first_frame: false
+context_noise: 0          # context rerun at t=0 after every chunk

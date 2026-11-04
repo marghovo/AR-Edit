@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AR-Edit: Training-Free Autoregressive Video Editing without Inversion</title>
+<meta name="description" content="AR-Edit edits a video stream in real time on DMD-distilled autoregressive video diffusion models. Queries and keys stay stable across timesteps while values carry the content, so source values cached from one clean forward pass replace inversion. NeurIPS 2026.">
+<meta property="og:title" content="AR-Edit: Training-Free Autoregressive Video Editing without Inversion">
+<meta property="og:description" content="Real-time, training-free, inversion-free streaming video editing via the QKV asymmetry of distilled autoregressive video diffusion models. NeurIPS 2026.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="static/img/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#1b1b1d">
+<script>/* apply a saved light/dark choice before first paint; dark is the default */
+try { if (localStorage.getItem('ar-theme') === 'light') { document.documentElement.dataset.theme = 'light'; document.querySelector('meta[name="theme-color"]').content = '#f7f5f1'; } } catch (e) {}</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231b1b1d'/%3E%3Cpath d='M14 16h9l9 26 9-26h9L37 50h-10z' fill='%23ff7a00'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Newsreader:ital,opsz,wght@0,6..72,300..800;1,6..72,300..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+<link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="noise-Q" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="2" seed="3" result="warp"/>
+      <feDisplacementMap in="SourceGraphic" in2="warp" scale="0" xChannelSelector="R" yChannelSelector="G" result="moved"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" seed="11" result="grain"/>
+      <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.2 4" result="holes"/>
+      <feComposite in="moved" in2="holes" operator="in"/>
+    </filter>
+    <filter id="noise-K" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="2" seed="7" result="warp"/>
+      <feDisplacementMap in="SourceGraphic" in2="warp" scale="0" xChannelSelector="R" yChannelSelector="G" result="moved"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" seed="13" result="grain"/>
+      <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.2 4" result="holes"/>
+      <feComposite in="moved" in2="holes" operator="in"/>
+    </filter>
+    <filter id="noise-V" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="2" seed="5" result="warp"/>
+      <feDisplacementMap in="SourceGraphic" in2="warp" scale="0" xChannelSelector="R" yChannelSelector="G" result="moved"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" seed="17" result="grain"/>
+      <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.2 4" result="holes"/>
+      <feComposite in="moved" in2="holes" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="bar" id="bar">
+  <div class="bar__inner">
+    <a class="wordmark" href="#top" aria-label="AR-Edit, back to top">AR-Edit</a>
+    <nav class="bar__nav" aria-label="Sections">
+      <a href="#asymmetry">QKV asymmetry</a>
+      <a href="#reconstruction">Inversion</a>
+      <a href="#method">Method</a>
+      <a href="#results">Results</a>
+      <a href="#numbers">Numbers</a>
+      <a href="#ablations">Ablations</a>
+      <a href="#cite">Cite</a>
+    </nav>
+    <div class="bar__links">
+      <button class="btn btn--quiet theme-toggle" type="button" data-theme-toggle aria-label="Switch to light theme" title="Switch to light theme">
+        <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+        <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20.2 14.6A8.4 8.4 0 0 1 9.4 3.8a8.4 8.4 0 1 0 10.8 10.8z"/></svg>
+      </button>
+      <a class="btn btn--quiet" href="static/paper.pdf">Paper</a>
+      <a class="btn btn--quiet" href="https://github.com/marghovo/AR-Edit">Code</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ============================== HERO ============================== -->
+<section class="hero" id="top">
+  <div class="hero__text">
+    <p class="venue">NeurIPS 2026</p>
+    <h1 class="title">AR&#8209;Edit</h1>
+    <p class="subtitle">Training-Free Autoregressive Video Editing without Inversion</p>
+
+    <ul class="authors" aria-label="Authors">
+      <li><a href="https://marghovo.github.io">Hovhannes Margaryan</a><sup>1,3</sup></li>
+      <li><a href="https://scholar.google.com/citations?user=gLEhMQQAAAAJ">Quentin Bammey</a><sup>2</sup></li>
+      <li><a href="https://scholar.google.com/citations?user=88vBLhsAAAAJ">Christian Sandor</a><sup>1</sup></li>
+      <li><a href="https://scholar.google.com/citations?user=gIRvhKkAAAAJ">Vicky Kalogeiton</a><sup>3</sup></li>
+    </ul>
+    <ol class="affils" aria-label="Affiliations">
+      <li><sup>1</sup>Team ARAI, Université Paris-Saclay, CNRS, LISN, France</li>
+      <li><sup>2</sup>LTCI, Télécom Paris, IP Paris, France</li>
+      <li><sup>3</sup>LIX, École Polytechnique, CNRS, IP Paris, France</li>
+    </ol>
+
+    <div class="actions">
+      <a class="btn btn--solid" href="static/paper.pdf">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2h7l4 4v12H5z M12 2v4h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        Read the paper
+      </a>
+      <a class="btn" href="https://github.com/marghovo/AR-Edit">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6l-4 4 4 4M13 6l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Code
+      </a>
+      <!-- TODO: point this at the benchmark download (HF dataset / Zenodo / release asset) -->
+      <a class="btn" href="https://github.com/marghovo/AR-Edit#benchmark" data-benchmark>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9M6.5 8.5L10 12l3.5-3.5M4 14v3h12v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Benchmark
+      </a>
+      <a class="btn" href="#cite">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        BibTeX
+      </a>
+    </div>
+  </div>
+
+  <figure class="stage" id="hero">
+    <div class="split" data-split>
+      <video class="split__a" muted playsinline loop preload="none" aria-label="Source video"></video>
+      <video class="split__b" muted playsinline loop preload="none" aria-label="Edited video"></video>
+      <span class="split__tag split__tag--a">Source stream</span>
+      <span class="split__tag split__tag--b">AR-Edit</span>
+      <div class="split__handle" role="slider" tabindex="0" aria-label="Compare source and edit" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span></span></div>
+    </div>
+
+    <div class="ribbon">
+      <button class="player__btn ribbon__btn" type="button" aria-label="Play"></button>
+      <div class="ribbon__track">
+        <div class="ribbon__cells" aria-label="Seek through the stream"></div>
+      </div>
+    </div>
+
+    <figcaption class="prompt" data-prompt></figcaption>
+
+    <div class="picker" role="tablist" aria-label="Example edits"></div>
+  </figure>
+</section>
+
+<!-- ============================== TL;DR ============================== -->
+<section class="tldr" aria-label="Summary">
+  <p class="tldr__line">In DMD-distilled autoregressive video diffusion models, queries and keys remain aligned with their clean-source counterparts across denoising timesteps, while values diverge significantly: the attention routing is preserved, and changes in the generated content are primarily carried by the values. AR-Edit caches the source&rsquo;s values from a single clean forward pass and injects them while each chunk is denoised from pure noise: real-time, structure-preserving streaming video editing, with no optimization, inversion or training.</p>
+</section>
+
+<section class="block" id="abstract" aria-labelledby="abstract-h">
+  <div class="prose">
+    <h2 class="h2" id="abstract-h">Abstract</h2>
+    <p>Editing a video stream in real time, without access to future frames, is essential for interactive applications. Existing training-free video editing methods, however, assume full offline access to the entire sequence, while streaming approaches either rely on additional training or are limited to specific editing techniques. We show that this limitation can be removed by analyzing the self-attention dynamics of DMD-distilled autoregressive (AR) video diffusion models. We uncover a key asymmetry: queries and keys remain stable and aligned with their source counterparts across denoising timesteps, while values diverge and encode the evolving content. Inherited from the non-distilled bidirectional teacher, this asymmetry is strongest at high noise, where few-step streaming models operate. The resulting mechanism is simple: a single forward pass suffices to capture source identity in the value features, which can be reused throughout generation. Starting from pure Gaussian noise and injecting only these source values reconstructs the input with fidelity matching or surpassing inversion-based methods, effectively eliminating inversion. Based on this insight, we introduce <strong>AR-Edit</strong>, a training-free, inversion-free method that caches source values once and selectively injects them during denoising. Across multiple AR backbones, AR-Edit enables real-time streaming editing with superior source preservation and tonal fidelity at minimal overhead.</p>
+  </div>
+</section>
+
+<!-- ============================== QKV ASYMMETRY ============================== -->
+<section class="block block--wide" id="asymmetry" aria-labelledby="asym-h">
+  <div class="prose">
+    <h2 class="h2" id="asym-h">How do self-attention features evolve across timesteps?</h2>
+  </div>
+
+  <div class="qkv" id="qkv">
+    <div class="qkv__controls">
+      <div class="seg" role="radiogroup" aria-label="Model" data-qkv-model>
+        <button role="radio" data-v="rf" aria-checked="true">Reward Forcing</button>
+        <button role="radio" data-v="causvid" aria-checked="false">CausVid</button>
+        <button role="radio" data-v="causvid_bidi" aria-checked="false">CausVid, bidirectional</button>
+        <button role="radio" data-v="teacher" aria-checked="false">Wan&nbsp;2.1 teacher</button>
+        <button role="radio" data-v="all" aria-checked="false">Compare all</button>
+      </div>
+      <div class="seg seg--small" role="radiogroup" aria-label="Measured while" data-qkv-setting>
+        <span class="seg__label">Measured on</span>
+        <button role="radio" data-v="" aria-checked="true">a noised source</button>
+        <button role="radio" data-v="_gen" aria-checked="false">generation from noise</button>
+        <button role="radio" data-v="_edit" aria-checked="false">AR-Edit editing</button>
+      </div>
+      <p class="qkv__desc" data-qkv-desc aria-live="polite">We noise a clean source video to each training timestep of the distilled model, run a single forward pass, and compare the queries, keys and values of all 30 self-attention blocks with those of the clean pass at <i>t</i>&nbsp;=&nbsp;0. Drag the noise level and watch what survives.</p>
+    </div>
+
+    <div class="qkv__stage">
+    <div class="qkv__left">
+    <div class="qkv__glyphs" aria-live="polite">
+      <div class="glyph" data-f="Q">
+        <svg viewBox="0 0 220 220" aria-hidden="true"><text x="110" y="172" text-anchor="middle" filter="url(#noise-Q)">Q</text></svg>
+        <p class="glyph__val"><span data-val>1.00</span><small>queries</small></p>
+      </div>
+      <div class="glyph" data-f="K">
+        <svg viewBox="0 0 220 220" aria-hidden="true"><text x="110" y="172" text-anchor="middle" filter="url(#noise-K)">K</text></svg>
+        <p class="glyph__val"><span data-val>1.00</span><small>keys</small></p>
+      </div>
+      <div class="glyph" data-f="V">
+        <svg viewBox="0 0 220 220" aria-hidden="true"><text x="110" y="172" text-anchor="middle" filter="url(#noise-V)">V</text></svg>
+        <p class="glyph__val"><span data-val>1.00</span><small>values</small></p>
+      </div>
+    </div>
+
+    <p class="note qkv__cap">Each number is the mean cosine similarity to the clean pass over all 30 blocks.</p>
+    <div class="noise">
+      <label class="noise__label" for="noise-range">Noise level <output id="noise-out"><i>t</i> = 0</output></label>
+      <input id="noise-range" class="noise__range" type="range" min="0" max="4" step="1" value="0">
+      <div class="noise__ticks" aria-hidden="true"></div>
+      <div class="noise__ends" aria-hidden="true"><span>clean source</span><span>pure noise</span></div>
+    </div>
+    </div>
+
+    <div class="qkv__charts" aria-label="Cosine similarity to the clean pass against block index">
+      <figure class="chart" data-f="Q"><figcaption><b>Q</b></figcaption><svg viewBox="0 0 270 230" role="img" aria-label="Query cosine similarity against block index"></svg></figure>
+      <figure class="chart" data-f="K"><figcaption><b>K</b></figcaption><svg viewBox="0 0 270 230" role="img" aria-label="Key cosine similarity against block index"></svg></figure>
+      <figure class="chart" data-f="V"><figcaption><b>V</b></figcaption><svg viewBox="0 0 270 230" role="img" aria-label="Value cosine similarity against block index"></svg></figure>
+    </div>
+    <div class="qkv__grid" data-qkv-grid hidden aria-label="Cosine similarity against block index, one row per model"></div>
+    </div>
+    <p class="note qkv__note" data-qkv-note></p>
+  </div>
+
+  <div class="prose prose--after">
+    <p>Queries and keys stay close to their clean versions at every depth, even at <i>t</i>&nbsp;=&nbsp;1000, where the input is pure noise; values do not. The attention routing (which tokens attend to which) is nearly invariant to the noise level, while the content read out through <span class="m">V</span> is timestep-specific. This suggests a simple strategy: cache <span class="m">V</span> from a single source forward pass at <i>t</i>&nbsp;=&nbsp;0 and inject it during denoising. Because <span class="m">Q</span> and <span class="m">K</span> at any timestep are already structurally compatible with <span class="m">V</span> at <i>t</i>&nbsp;=&nbsp;0, the injected values slot into the attention computation without disrupting the routing that the target prompt governs through <span class="m">Q</span> and <span class="m">K</span>.</p>
+    <p>Switch to the Wan&nbsp;2.1 teacher to see where this comes from. The non-distilled bidirectional model shows the same asymmetry at high noise, and it fades as <i>t</i> approaches 0. Few-step students are trained and sampled only at <i>t</i>&nbsp;&ge;&nbsp;625 (Reward Forcing) or <i>t</i>&nbsp;&ge;&nbsp;522 (CausVid), exactly where it is strongest.</p>
+  </div>
+</section>
+
+<!-- ============================== RECONSTRUCTION ============================== -->
+<section class="block block--wide" id="reconstruction" aria-labelledby="recon-h">
+  <div class="prose">
+    <h2 class="h2" id="recon-h">Does inversion still matter?</h2>
+    <p class="lead lead--fit"><span class="m">V</span> from <i>t</i>&nbsp;=&nbsp;0 is structurally compatible with <span class="m">Q</span> and <span class="m">K</span> at any denoising timestep. This suggests that inversion may not be necessary with autoregressive video diffusion models.</p>
+    <p>We test this with six reconstruction recipes on our benchmark. Each recipe is defined by three choices: the initial noise <i>z<sub>T</sub></i>, where the injected <span class="m">V</span> tensors come from, and the timestep at which they are taken. Pick a recipe in the table to see what it gives back.</p>
+  </div>
+
+  <div class="recon" id="recon">
+    <figure class="rtable">
+      <div class="table-scroll" tabindex="0" aria-label="Reconstruction recipes">
+        <table class="rtable__t" data-recon-table></table>
+      </div>
+      <figcaption class="note">Reconstruction recipes. Each recipe is named by its initial noise (Inv: inverted, Rand: random), <span class="m">V</span> source (Inv: inversion, Fwd: forward pass), and <span class="m">V</span> timestep ({<span class="m">V</span><sup><i>t</i></sup>}: one <span class="m">V</span> per denoising step, <span class="m">V</span><sup><i>t</i></sup>: a single <span class="m">V</span> at a fixed <i>t</i>). Ours &lang;Rand, Fwd, <span class="m">V</span><sup>0</sup>&rang; removes inversion entirely by starting from random noise with <span class="m">V</span> from a clean forward pass at <i>t</i>&nbsp;=&nbsp;0.</figcaption>
+    </figure>
+
+    <div class="recon__view">
+      <div class="recon__pair">
+        <figure class="tile tile--input">
+          <div class="tile__media"><video muted playsinline loop preload="none" data-recon-src aria-label="Source video: a 3D animated donkey in a grassy field"></video></div>
+          <figcaption><span>Source video</span></figcaption>
+        </figure>
+        <figure class="tile" data-recon-tile>
+          <div class="tile__media"><video muted playsinline loop preload="none" data-recon-out></video></div>
+          <figcaption><span data-recon-name></span><span class="strip__score" data-recon-clip></span></figcaption>
+        </figure>
+      </div>
+      <div class="player" data-player="recon"></div>
+      <div class="tchips" data-recon-t hidden>
+        <span class="tchips__label"><span class="m">V</span> taken at</span>
+      </div>
+    </div>
+
+    <figure class="lpips2">
+      <div class="lpips2__panels">
+        <svg viewBox="0 0 560 360" role="img" aria-label="LPIPS against pre-denoising NFE for the recipes with per-step V and for V at t = 0" data-recon-plot="L"></svg>
+        <svg viewBox="0 0 560 360" role="img" aria-label="LPIPS against pre-denoising NFE for the forward-pass recipes at each extraction timestep" data-recon-plot="R"></svg>
+      </div>
+      <ul class="lpips2__legend" data-recon-legend></ul>
+      <figcaption class="note">LPIPS (log scale, lower is better) on the 120-video benchmark as a function of the pre-denoising neural function evaluations (NFE), the network passes spent to obtain <i>z<sub>T</sub></i> and <span class="m">V</span> before denoising. Markers follow the table; click one to see its reconstruction.</figcaption>
+    </figure>
+  </div>
+  <div class="prose prose--after">
+    <p><b>Drawing <i>z<sub>T</sub></i> from <i>N</i>(0,&nbsp;<i>I</i>) and injecting <span class="m">V</span> from <i>t</i>&nbsp;=&nbsp;0 obtained via a single forward pass of the source video (Ours) outperforms or matches every more expensive variant at a single pre-denoising NFE with neither inversion nor per-step matching of <span class="m">V</span>.</b></p>
+  </div>
+</section>
+
+<!-- ============================== METHOD ============================== -->
+<section class="block block--wide" id="method" aria-labelledby="method-h">
+  <div class="prose">
+    <h2 class="h2" id="method-h">Autoregressive video editing without inversion</h2>
+    <p class="lead lead--fit">For each incoming video chunk, a single forward pass caches the source <span class="m">V</span> features. The edited output is then denoised from Gaussian noise conditioned on the target prompt, while the cached <span class="m">V</span> is selectively injected.</p>
+    <p>The target <span class="m">Q</span> and <span class="m">K</span> guide the edit semantics, while the injected <span class="m">V</span> preserves source identity. In later steps, a commit-then-anchor schedule confines the injection to the unedited region via a cross-attention mask, and a text boost emphasizes the new text tokens in cross-attention. The method requires no training or optimization and integrates with rolling KV caches for streaming. Select a pass to see which values the injected blocks read.</p>
+  </div>
+
+  <div class="passes" id="passes">
+    <ol class="passes__row" role="tablist" aria-label="Forward passes for one chunk"></ol>
+    <div class="passes__detail">
+      <div class="pdetail__text">
+        <h3 class="h3" data-pd-title></h3>
+        <p data-pd-body></p>
+        <div class="eq" data-pd-eq></div>
+      </div>
+      <div class="pdetail__viz">
+        <canvas width="520" height="300" data-pd-canvas aria-hidden="true"></canvas>
+        <div class="depth" data-pd-depth aria-hidden="true"></div>
+        <ul class="legend" data-pd-legend></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="maskdemo" id="maskdemo">
+    <div class="prose">
+      <h3 class="h3">The anchor mask on a real stream</h3>
+      <p>From the third step on, <i>M</i> comes from the cross-attention of the words that differ between the prompts, here <q>piglet</q> and <q>cat</q>, read at blocks 0&ndash;19 before the injected blocks run. The orange region stays pinned to the source values; the cat is free to form inside.</p>
+    </div>
+    <div class="maskdemo__pair">
+      <figure class="tile">
+        <div class="tile__media">
+          <video muted playsinline loop preload="none" aria-label="Source: small brown piglet"></video>
+          <canvas class="tile__overlay" width="832" height="480" aria-hidden="true"></canvas>
+        </div>
+        <figcaption><span>Source with <i>M</i> overlaid</span><label class="toggle"><input type="checkbox" checked data-mask-toggle> Show mask</label></figcaption>
+      </figure>
+      <figure class="tile tile--ours">
+        <div class="tile__media"><video muted playsinline loop preload="none" aria-label="AR-Edit result: small brown cat"></video></div>
+        <figcaption><span>AR-Edit: <q>small brown cat</q></span></figcaption>
+      </figure>
+    </div>
+    <div class="player" data-player="mask"></div>
+  </div>
+
+  <div class="budget" id="budget">
+    <h3 class="h3">Network passes per chunk</h3>
+    <p class="note">Reward Forcing backbone, four editing steps, one H100, 480&times;832. Every streaming method also pays the one context rerun.</p>
+    <div class="budget__rows"></div>
+  </div>
+</section>
+
+<!-- ============================== RESULTS ============================== -->
+<section class="block block--wide" id="results" aria-labelledby="results-h">
+  <div class="prose">
+    <h2 class="h2" id="results-h">Side by side on a streaming backbone</h2>
+    <p class="lead">Every method runs causally, chunk by chunk, on Reward Forcing with four editing steps.</p>
+    <p>The videos play in sync. Switch to the slider to put any baseline against AR-Edit on the same frame.</p>
+  </div>
+
+  <div class="compare" id="compare">
+    <div class="compare__top">
+      <div class="clips" role="tablist" aria-label="Edits" data-clips></div>
+      <div class="seg" role="radiogroup" aria-label="Layout" data-layout>
+        <button role="radio" data-v="grid" aria-checked="true">All methods</button>
+        <button role="radio" data-v="split" aria-checked="false">Slider</button>
+      </div>
+    </div>
+    <p class="prompt prompt--inline" data-prompt></p>
+
+    <div class="grid6" data-grid></div>
+
+    <div class="splitwrap" data-splitwrap hidden>
+      <div class="seg seg--small" role="radiogroup" aria-label="Compare AR-Edit with" data-left>
+        <span class="seg__label">AR-Edit against</span>
+      </div>
+      <div class="split split--big" data-split>
+        <video class="split__a" muted playsinline loop preload="none"></video>
+        <video class="split__b" muted playsinline loop preload="none"></video>
+        <span class="split__tag split__tag--a" data-left-name>Input</span>
+        <span class="split__tag split__tag--b">AR-Edit</span>
+        <div class="split__handle" role="slider" tabindex="0" aria-label="Compare" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span></span></div>
+      </div>
+    </div>
+    <div class="player" data-player="compare"></div>
+  </div>
+
+  <div class="compare compare--se" id="streamedit">
+    <div class="prose">
+      <h3 class="h3">Comparison with StreamEdit on Self Forcing</h3>
+      <p><a href="https://arxiv.org/abs/2605.21466">StreamEdit</a> is concurrent work, released after our submission, that also targets training-free streaming editing. We run it on its native Self Forcing backbone with its official settings and four editing steps, and AR-Edit on the same backbone.</p>
+    </div>
+    <div class="clips" role="tablist" aria-label="Edits" data-clips></div>
+    <p class="prompt prompt--inline" data-prompt></p>
+    <div class="grid3" data-grid></div>
+    <div class="player" data-player="se"></div>
+  </div>
+</section>
+
+<!-- ============================== NUMBERS ============================== -->
+<section class="block block--wide" id="numbers" aria-labelledby="numbers-h">
+  <div class="prose">
+    <h2 class="h2" id="numbers-h">Numbers</h2>
+    <p>120 hand-curated Pexels videos in ten edit categories. A vision-language judge (Qwen2.5-VL-72B) scores source adherence, text adherence and video quality from 1 to 10. Tonal fidelity (TF) measures how well the edit keeps the source&rsquo;s intensity distribution, so burning and color drift lower it; TF<sub>u</sub> restricts it to the region the edit should leave alone.</p>
+  </div>
+
+  <div class="table-wrap">
+    <div class="seg" role="radiogroup" aria-label="Backbone" data-backbone>
+      <button role="radio" data-v="rf" aria-checked="true">Reward Forcing</button>
+      <button role="radio" data-v="causvid" aria-checked="false">CausVid</button>
+      <button role="radio" data-v="sf" aria-checked="false">Self Forcing</button>
+      <button role="radio" data-v="bidir" aria-checked="false">Wan&nbsp;2.1, bidirectional</button>
+    </div>
+    <p class="note" data-backbone-note></p>
+    <div class="table-scroll" tabindex="0" aria-label="Quantitative comparison table">
+      <table class="results">
+        <thead>
+          <tr class="results__group">
+            <th rowspan="2" scope="col">Method</th>
+            <th colspan="2" scope="colgroup">Editing quality</th>
+            <th colspan="4" scope="colgroup">Visual fidelity</th>
+            <th colspan="5" scope="colgroup">Runtime and memory</th>
+          </tr>
+          <tr>
+            <th scope="col">Source adh. ↑</th><th scope="col">Text adh. ↑</th>
+            <th scope="col">Video quality ↑</th><th scope="col">CLIP frame ↑</th><th scope="col">TF ↑</th><th scope="col">TF<sub>u</sub> ↑</th>
+            <th scope="col">Edit steps</th><th scope="col">NFE ↓</th><th scope="col">FPS ↑</th><th scope="col">Latency (s) ↓</th><th scope="col">Peak mem. (GB) ↓</th>
+          </tr>
+        </thead>
+        <tbody data-table></tbody>
+      </table>
+    </div>
+    <p class="note">Bold is best and underlined is second best within a backbone. Peak memory is allocated / reserved.</p>
+  </div>
+
+  <div class="duo">
+    <figure class="panel">
+      <figcaption><h3 class="h3">Source against text adherence</h3><p class="note">Reward Forcing, as the number of editing steps grows from 2 to 4 (marker size).</p></figcaption>
+      <svg viewBox="0 0 560 400" role="img" aria-label="Scatter plot of source adherence against text adherence for each method at 2, 3 and 4 editing steps" data-scatter></svg>
+      <div class="panel__foot"><ul class="legend legend--methods" data-scatter-legend></ul><button class="btn btn--small" type="button" aria-pressed="false" data-zoom>Zoom into the cluster</button></div>
+    </figure>
+    <figure class="panel">
+      <figcaption><h3 class="h3">User study</h3><p class="note">How often each method was picked as best: 20 participants, 33 videos, Reward Forcing.</p></figcaption>
+      <div class="bars" data-bars></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ============================== ABLATIONS ============================== -->
+<section class="block block--wide" id="ablations" aria-labelledby="abl-h">
+  <div class="prose">
+    <h2 class="h2" id="abl-h">What each control does</h2>
+    <p>AR-Edit exposes a small set of controls: how many steps inject source values in full (<i>S</i>), when the mask takes over (<i>S</i><sub>CtA</sub>), which blocks receive the values (<i>b</i><sub>min</sub>) and which build the mask (<i>b</i><sub>CtA</sub>), and how strongly new words are boosted (<i>s</i>). Everything not under study stays at its default.</p>
+  </div>
+  <div class="abl" id="abl">
+    <div class="seg" role="radiogroup" aria-label="Ablation" data-abl>
+      <button role="radio" data-v="sched" aria-checked="true">Injection schedule</button>
+      <button role="radio" data-v="blocks" aria-checked="false">Block thresholds</button>
+      <button role="radio" data-v="comp" aria-checked="false">Components</button>
+      <button role="radio" data-v="boost" aria-checked="false">Text boost</button>
+    </div>
+    <p class="abl__finding" data-abl-finding></p>
+    <div class="clips" role="tablist" aria-label="Edits" data-clips></div>
+    <p class="prompt prompt--inline" data-prompt></p>
+    <div class="row5" data-grid></div>
+    <div class="player" data-player="abl"></div>
+  </div>
+</section>
+
+<!-- ============================== CITE ============================== -->
+<section class="block" id="cite" aria-labelledby="cite-h">
+  <div class="prose">
+    <h2 class="h2" id="cite-h">Cite</h2>
+  </div>
+  <div class="bib">
+    <pre id="bibtex">@inproceedings{margaryan2026aredit,
+  title     = {{AR-Edit}: Training-Free Autoregressive Video Editing without Inversion},
+  author    = {Margaryan, Hovhannes and Bammey, Quentin and Sandor, Christian and Kalogeiton, Vicky},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2026}
+}</pre>
+    <button class="btn btn--small" type="button" data-copy="#bibtex">Copy BibTeX</button>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <p>Source videos come from <a href="https://www.pexels.com">Pexels</a> and are used under the Pexels License. Backbones: Reward Forcing, CausVid and Self Forcing, all distilled from Wan&nbsp;2.1.</p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous" defer></script>
+<script src="static/js/data.js" defer></script>
+<script src="static/js/main.js" defer></script>
+</body>
+</html>
