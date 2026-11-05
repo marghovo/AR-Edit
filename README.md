@@ -21,10 +21,8 @@
 
 <b>NeurIPS 2026</b>
 
-<br><br>
-
 [![Paper](https://img.shields.io/badge/Paper-PDF-red)](#)
-[![Project Page](https://img.shields.io/badge/Project-Page-green)](#)
+[![Project Page](https://img.shields.io/badge/Project-Page-green)](https://marghovo.github.io/AR-Edit/)
 [![Benchmark](https://img.shields.io/badge/Benchmark-Download-orange)](#)
 
 </div>
