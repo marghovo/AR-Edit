@@ -8,3 +8,6 @@ outputs/
 
 # project page videos
 !docs/static/videos/**/*.mp4
+
+# macOS
+.DS_Store
