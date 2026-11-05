@@ -58,6 +58,8 @@ def build_parser() -> argparse.ArgumentParser:
     vid.add_argument("--fps", type=int, default=16)
     vid.add_argument("--num_frames", type=int, default=81,
                      help="Max pixel frames read from the input (1 + 4k; 81 -> 7 chunks).")
+    vid.add_argument("--trim_start_s", type=float, default=0.0,
+                     help="Skip this many seconds of the input before reading the frames.")
     vid.add_argument("--seed", type=int, default=0)
     AREditConfig.add_cli_arguments(p)
     return p
@@ -98,6 +100,7 @@ def main() -> None:
 
     input_video = load_mp4_as_tensor(
         args.video_path, max_frames=args.num_frames, resize_hw=(args.height, args.width),
+        trim_start_s=args.trim_start_s,
     ).unsqueeze(0).to(device=device, dtype=torch.bfloat16)
     LOGGER.info("Input video shape: %s", tuple(input_video.shape))
 

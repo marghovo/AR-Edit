@@ -19,11 +19,17 @@ LOGGER = logging.getLogger(__name__)
 
 def load_mp4_as_tensor(video_path: str, max_frames: Optional[int] = None,
                        resize_hw: Optional[Tuple[int, int]] = None,
-                       normalize: bool = True) -> torch.Tensor:
-    """Load an mp4 as a float tensor [C, T, H, W] (in [-1, 1] when `normalize`)."""
+                       normalize: bool = True, trim_start_s: float = 0.0) -> torch.Tensor:
+    """Load an mp4 as a float tensor [C, T, H, W] (in [-1, 1] when `normalize`).
+
+    Frames are taken as they are in the file (no frame-rate conversion): the first `max_frames`
+    frames starting `trim_start_s` seconds into the file.
+    """
     if not os.path.exists(video_path):
         raise FileNotFoundError(video_path)
-    video, _, _ = torchvision.io.read_video(video_path, output_format="TCHW")
+    video, _, info = torchvision.io.read_video(video_path, output_format="TCHW")
+    if trim_start_s > 0:
+        video = video[int(round(trim_start_s * float(info["video_fps"]))):]
     if max_frames is not None:
         video = video[:max_frames]
     video = rearrange(video, "t c h w -> c t h w")

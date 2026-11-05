@@ -23,7 +23,7 @@
 
 [![Paper](https://img.shields.io/badge/Paper-PDF-red)](#)
 [![Project Page](https://img.shields.io/badge/Project-Page-green)](https://marghovo.github.io/AR-Edit/)
-[![Benchmark](https://img.shields.io/badge/Benchmark-Download-orange)](#)
+[![Benchmark](https://img.shields.io/badge/Benchmark-Pexels-orange)](benchmark/)
 
 </div>
 
@@ -180,17 +180,17 @@ video = runner.edit(input_video, src_prompt, tar_prompt)      # [1, C, T, H, W] 
 
 ## 📊 Benchmark
 
-The benchmark is 120 hand-curated Pexels videos in ten edit categories, each
-with a source caption, a target prompt and an edit-region mask:
-[download](#).
-
-`scripts/run_pexels_benchmark.sh` runs one clip per SLURM array task from a
-JSON file (fields `id`, `video_path`, `caption`, `target_prompt`,
-`edit_type`, `category`) and applies the per-category routing of the mask
-combination table above:
+The paper's benchmark, 120 hand-curated Pexels videos in ten edit categories with
+a source and a target prompt each, is in [`benchmark/`](benchmark/):
+`ar_edit_pexels_benchmark.json` lists the clips with their Pexels links and
+statistics, `download_pexels.py` fetches them (free Pexels API key), and
+`scripts/run_pexels_benchmark.sh` runs AR-Edit on all of them, one clip per SLURM
+array task, with the per-category mask routing of the paper:
 
 ```bash
-export BENCH_JSON=/path/to/bench.json OUT_DIR=outputs/bench CKPT_DIR=checkpoints
+export PEXELS_API_KEY=...
+python benchmark/download_pexels.py benchmark/ar_edit_pexels_benchmark.json benchmark/videos
+export OUT_DIR=outputs/benchmark CKPT_DIR=checkpoints
 sbatch --array=0-119 scripts/run_pexels_benchmark.sh          # or: CLIP_IDX=3 bash scripts/run_pexels_benchmark.sh
 ```
 
