@@ -11,3 +11,6 @@ outputs/
 
 # macOS
 .DS_Store
+
+# IDE settings
+.idea/
