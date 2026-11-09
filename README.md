@@ -208,13 +208,6 @@ python scripts/eval_tonal_fidelity.py ... --json     # {kl, tf[, kl_u, tf_u, reg
 ## 📚 Citation
 
 ```bibtex
-@inproceedings{margaryan2026aredit,
-  title     = {{AR-Edit}: Training-Free Autoregressive Video Editing without Inversion},
-  author    = {Margaryan, Hovhannes and Bammey, Quentin and Sandor, Christian and Kalogeiton, Vicky},
-  booktitle = {Advances in Neural Information Processing Systems},
-  year      = {2026}
-}
-
 @misc{margaryan2026aredittrainingfreeautoregressivevideo,
   title         = {{AR-Edit}: Training-Free Autoregressive Video Editing without Inversion},
   author        = {Hovhannes Margaryan and Quentin Bammey and Christian Sandor and Vicky Kalogeiton},
