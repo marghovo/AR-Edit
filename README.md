@@ -21,7 +21,7 @@
 
 <b>NeurIPS 2026</b>
 
-[![Paper](https://img.shields.io/badge/Paper-PDF-red)](#)
+[![Paper](https://img.shields.io/badge/Paper-arXiv-red)](https://arxiv.org/abs/2611.09795)
 [![Project Page](https://img.shields.io/badge/Project-Page-green)](https://marghovo.github.io/AR-Edit/)
 [![Benchmark](https://img.shields.io/badge/Benchmark-Pexels-orange)](benchmark/)
 
@@ -213,6 +213,16 @@ python scripts/eval_tonal_fidelity.py ... --json     # {kl, tf[, kl_u, tf_u, reg
   author    = {Margaryan, Hovhannes and Bammey, Quentin and Sandor, Christian and Kalogeiton, Vicky},
   booktitle = {Advances in Neural Information Processing Systems},
   year      = {2026}
+}
+
+@misc{margaryan2026aredittrainingfreeautoregressivevideo,
+  title         = {{AR-Edit}: Training-Free Autoregressive Video Editing without Inversion},
+  author        = {Hovhannes Margaryan and Quentin Bammey and Christian Sandor and Vicky Kalogeiton},
+  year          = {2026},
+  eprint        = {2611.09795},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV},
+  url           = {https://arxiv.org/abs/2611.09795}
 }
 ```
 
